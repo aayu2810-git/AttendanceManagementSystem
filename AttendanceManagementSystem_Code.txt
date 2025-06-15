@@ -1,0 +1,160 @@
+
+// Main.java
+import javax.swing.*;
+import ui.Dashboard;
+
+public class Main {
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(() -> new Dashboard());
+    }
+}
+
+// ui/Dashboard.java
+package ui;
+
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import timer.FocusTimer;
+import tracker.UserActivityMonitor;
+import logger.DataLogger;
+
+public class Dashboard extends JFrame {
+    private JButton startButton, stopButton;
+    private JTextArea logArea;
+    private FocusTimer timer;
+    private UserActivityMonitor monitor;
+
+    public Dashboard() {
+        setTitle("Attendance Management System");
+        setSize(400, 300);
+        setDefaultCloseOperation(EXIT_ON_CLOSE);
+        setLayout(new BorderLayout());
+
+        startButton = new JButton("Start Session");
+        stopButton = new JButton("Stop Session");
+        logArea = new JTextArea();
+        logArea.setEditable(false);
+
+        JPanel topPanel = new JPanel();
+        topPanel.add(startButton);
+        topPanel.add(stopButton);
+
+        add(topPanel, BorderLayout.NORTH);
+        add(new JScrollPane(logArea), BorderLayout.CENTER);
+
+        timer = new FocusTimer(logArea);
+        monitor = new UserActivityMonitor(logArea);
+
+        startButton.addActionListener(e -> {
+            timer.startFocusSession();
+            monitor.startMonitoring();
+            DataLogger.log("Session started.");
+        });
+
+        stopButton.addActionListener(e -> {
+            timer.stopFocusSession();
+            monitor.stopMonitoring();
+            DataLogger.log("Session ended.");
+        });
+
+        setVisible(true);
+    }
+}
+
+// timer/FocusTimer.java
+package timer;
+
+import javax.swing.*;
+import java.util.Timer;
+import java.util.TimerTask;
+
+public class FocusTimer {
+    private Timer timer;
+    private JTextArea logArea;
+
+    public FocusTimer(JTextArea logArea) {
+        this.logArea = logArea;
+    }
+
+    public void startFocusSession() {
+        timer = new Timer();
+        timer.schedule(new TimerTask() {
+            public void run() {
+                JOptionPane.showMessageDialog(null, "Focus session over! Time for a break.");
+                logArea.append("\nFocus session ended.");
+            }
+        }, 25 * 60 * 1000);
+        logArea.append("\nFocus session started.");
+    }
+
+    public void stopFocusSession() {
+        if (timer != null) timer.cancel();
+        logArea.append("\nFocus session stopped.");
+    }
+}
+
+// tracker/UserActivityMonitor.java
+package tracker;
+
+import javax.swing.*;
+import java.awt.event.*;
+import java.awt.*;
+
+public class UserActivityMonitor {
+    private JTextArea logArea;
+    private Timer idleTimer;
+    private long lastActiveTime;
+    private boolean running = false;
+
+    public UserActivityMonitor(JTextArea logArea) {
+        this.logArea = logArea;
+    }
+
+    public void startMonitoring() {
+        running = true;
+        lastActiveTime = System.currentTimeMillis();
+
+        KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(e -> {
+            if (running) lastActiveTime = System.currentTimeMillis();
+            return false;
+        });
+
+        Toolkit.getDefaultToolkit().addAWTEventListener(event -> {
+            if (running) lastActiveTime = System.currentTimeMillis();
+        }, AWTEvent.MOUSE_EVENT_MASK);
+
+        idleTimer = new Timer(5000, e -> {
+            long now = System.currentTimeMillis();
+            if (now - lastActiveTime > 2 * 60 * 1000) {
+                logArea.append("\nUser inactive for 2 minutes.");
+            }
+        });
+        idleTimer.start();
+    }
+
+    public void stopMonitoring() {
+        running = false;
+        if (idleTimer != null) idleTimer.stop();
+    }
+}
+
+// logger/DataLogger.java
+package logger;
+
+import java.io.FileWriter;
+import java.io.IOException;
+import java.time.LocalDateTime;
+
+public class DataLogger {
+    private static final String LOG_FILE = "activity_log.txt";
+
+    public static void log(String message) {
+        try (FileWriter writer = new FileWriter(LOG_FILE, true)) {
+            writer.write(LocalDateTime.now() + ": " + message + "\n");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+}
